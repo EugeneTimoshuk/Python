@@ -1,0 +1,7 @@
+/swap.img
+/bin.usr-is-merged
+/dev/sr0
+/dev/loop0
+/dev/autofs
+/run/snapd-snap.socket
+

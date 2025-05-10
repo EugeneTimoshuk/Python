@@ -1,0 +1,302 @@
+Задание 1
+-------------------------------------------------------------------
+ls -l / | grep '^-' | head -1 | awk '{print "/"$NF}' 
+/swap.img
+-------------------------------------------------------------------
+ls -l / | grep '^d' | head -1 | awk '{print "/"$NF}' 
+/bin.usr-is-merged
+-------------------------------------------------------------------
+ls -l /dev | grep '^l' | head -1 | awk '{print "/dev/"$NF}' 
+/dev/sr0
+-------------------------------------------------------------------
+ls -l /dev | grep '^b' | head -1 | awk '{print "/dev/"$NF}'
+/dev/loop0
+-------------------------------------------------------------------
+ls -l /dev | grep '^c' | head -1 | awk '{print "/dev/"$NF}' 
+/dev/autofs
+-------------------------------------------------------------------
+ls -l /run | grep '^s' | head -1 | awk '{print "/run/"$NF}'
+/run/snapd-snap.socket
+-------------------------------------------------------------------
+ls -l /run/systemd | grep '^p' | head -1 | awk '{print "/run/systemd/"$NF}'
+Ничего не выдал
+-------------------------------------------------------------------
+Работа скрипта 
+micro file_types.sh
+
+----------------------------
+#!/bin/bash
+
+# Проверяем, что передано имя выходного файла
+if [ -z "$1" ]; then
+    echo "Usage: $0 <output_file1>"
+    exit 1
+fi
+
+output_file="$1"
+
+# Очищаем выходной файл
+> "$output_file1"
+
+# Функция для поиска и записи первого найденного файла определенного типа
+find_and_write() {
+    local path="$1"
+    local pattern="$2"
+    local prefix="$3"
+    
+    local found=$(ls -l "$path" 2>/dev/null | grep "$pattern" | head -1 | awk -v p="$prefix" '{print p$NF}')
+    if [ -n "$found" ]; then
+        echo "$found" >> "$output_file"
+    fi
+}
+
+# Ищем примеры каждого типа файлов
+find_and_write / '^-' '/'               # Обычный файл
+find_and_write / '^d' '/'               # Директория
+find_and_write /dev '^l' '/dev/'        # Символическая ссылка
+find_and_write /dev '^b' '/dev/'        # Блочное устройство
+find_and_write /dev '^c' '/dev/'        # Символьное устройство
+find_and_write /run '^s' '/run/'        # Сокет
+find_and_write /run/systemd '^p' '/run/systemd/' # Именованный канал (FIFO)
+
+echo "Результаты сохранены в $output_file"
+----------------------------
+
+chmod +x file_types.sh 
+./file_types.sh result.txt
+cat result.txt 
+/swap.img
+/bin.usr-is-merged
+/dev/sr0
+/dev/loop0
+/dev/autofs
+/run/snapd-snap.socket
+-------------------------------------------------------------------
+Задание номер 2
+touch find_hard.sh
+----------------------------
+
+#!/bin/bash
+
+[ -z "$1" ] && echo "Usage: $0 <target_file>" && exit 1
+
+target="$1"
+[ ! -e "$target" ] && echo "Error: File '$target' not found" && exit 1
+
+# Получаем точные данные файла
+inode=$(stat -c "%i" "$target")
+device_major_minor=$(stat -c "%d" "$target")
+device_name=$(df "$target" | awk 'NR==2 {print $1}')
+
+echo "Searching for hard links to: $target"
+echo "Inode: $inode, Device: $device_name"
+echo "----------------------------------------"
+
+# Метод 1: Через debugfs (самый надежный)
+if command -v debugfs &>/dev/null; then
+    echo "Method 1 (debugfs):"
+    sudo debugfs -R "ncheck $inode" "$device_name" 2>/dev/null | \
+    awk -v target="$target" '$2 != target {print $2}'
+else
+    echo "debugfs not installed, skipping method 1"
+fi
+
+# Метод 2: Через find (если разрешено)
+echo "----------------------------------------"
+echo "Method 2 (find):"
+find / -xdev -inum "$inode" ! -path "$target" 2>/dev/null
+
+# Метод 3: Альтернативный способ через ls
+echo "----------------------------------------"
+echo "Method 3 (ls/awk):"
+ls -lRi / 2>/dev/null | \
+awk -v inode="$inode" -v target="$target" '
+    $1 == inode {
+        for(i=9; i<=NF; i++) {
+            if($i != target) {
+                path = $i
+                for(j=i+1; j<=NF; j++) {
+                    path = path " " $j
+                }
+                print path
+                next
+            }
+        }
+    }'
+
+echo "----------------------------------------"
+echo "Search completed"
+
+----------------------------
+chmod +x find_hard.sh 
+sudo ./find_hard.sh  /home/eugene/OC1/result.txt
+
+earching for hard links to: /home/eugene/OC1/result.txt
+Inode: 922170, Device: /dev/sda2
+----------------------------------------
+Method 1 (debugfs):
+Pathname
+/home/eugene/backup_result.txt
+/tmp/result_backup.txt
+----------------------------------------
+Method 2 (find):
+/tmp/result_backup.txt
+/home/eugene/backup_result.txt
+----------------------------------------
+Method 3 (ls/awk):
+14:24 backup_result.txt
+14:24 result.txt
+14:24 result_backup.txt
+----------------------------------------
+Search completed
+-------------------------------------------------------------------
+Задание 3
+Способ 1: Через ln -s
+ln -s /home/eugene/OC1/output.txt /home/eugene/ln_symlink.txt
+Способ 2: Через cp -s
+cp -s /home/eugene/OC1/output.txt /home/eugene/cp_symlink.txt
+Способ 3: Через Perl
+perl -e 'symlink("/home/eugene/OC1/output.txt", "/home/eugene/perl_symlink.txt")'
+Способ 4: Через Python
+python3 -c 'import os; os.symlink("/home/eugene/OC1/output.txt", "/home/eugene/python_symlink.txt")'
+ls -l /home/eugene/ | grep '^l'
+lrwxrwxrwx 1 eugene eugene   27 мая  9 15:19 cp_symlink.txt -> /home/eugene/OC1/output.txt
+lrwxrwxrwx 1 eugene eugene   27 мая  9 15:19 ln_symlink.txt -> /home/eugene/OC1/output.txt
+lrwxrwxrwx 1 eugene eugene   27 мая  9 15:19 perl_symlink.txt -> /home/eugene/OC1/output.txt
+lrwxrwxrwx 1 eugene eugene   27 мая  9 15:19 python_symlink.txt -> /home/eugene/OC1/output.txt
+----------------------------------------
+
+Через скрипт
+touch find_symlinks.sh
+micro find_symlinks.sh 
+----------------------------------------
+#!/bin/bash
+
+if [ $# -ne 1 ]; then
+    echo "Использование: $0 <целевой_файл>"
+    exit 1
+fi
+
+TARGET=$(readlink -f "$1")
+if [ ! -e "$TARGET" ]; then
+    echo "Ошибка: Файл '$1' не существует"
+    exit 1
+fi
+
+echo "Поиск символьных ссылок на: $TARGET"
+echo "----------------------------------"
+
+# Метод 1: Используя find и readlink
+echo -e "\nМетод 1 (find + readlink):"
+find / -type l -exec sh -c '
+    for link; do
+        if [ "$(readlink -f "$link")" = "'"$TARGET"'" ]; then
+            echo "$link"
+        fi
+    done
+' sh {} + 2>/dev/null | sort | uniq
+
+# Метод 2: Используя ls и grep
+echo -e "\nМетод 2 (ls + grep):"
+ls -lR / 2>/dev/null | awk -v target="$TARGET" '
+    /^[^d].* -> / {
+        split($0, parts, " -> ");
+        if (parts[2] == target) {
+            gsub(/:$/, "", parts[1]);
+            print parts[1]
+        }
+    }
+' | sort | uniq
+
+echo -e "\nПоиск завершен"
+
+----------------------------------------
+
+chmod +x find_symlinks.sh
+./find_symlinks.sh
+
+=== Часть 1: Демонстрация способов создания символьных ссылок ===
+Создан тестовый файл: original_file.txt
+
+1. Создано через ln -s: link_ln.txt -> original_file.txt
+2. Создано через cp -s: link_cp.txt -> original_file.txt
+3. Создано через Perl: link_perl.txt -> original_file.txt
+4. Создано через Python: link_python.txt -> original_file.txt
+5. Создано через bash: link_bash.txt -> original_file.txt
+
+Проверка созданных ссылок:
+lrwxrwxrwx 1 eugene eugene 17 мая  9 16:05 link_bash.txt -> original_file.txt
+lrwxrwxrwx 1 eugene eugene 17 мая  9 16:05 link_cp.txt -> original_file.txt
+lrwxrwxrwx 1 eugene eugene 17 мая  9 16:05 link_ln.txt -> original_file.txt
+lrwxrwxrwx 1 eugene eugene 17 мая  9 16:05 link_perl.txt -> original_file.txt
+lrwxrwxrwx 1 eugene eugene 17 мая  9 16:05 link_python.txt -> original_file.txt
+
+
+-----------------------------------------------
+Задание 4
+touch find_symlinks2.sh
+-----------------------------------------------
+
+#!/bin/bash
+
+if [ $# -ne 1 ]; then
+    echo "Usage: $0 <target_file>"
+    exit 1
+fi
+
+TARGET=$(readlink -f "$1")
+if [ ! -e "$TARGET" ]; then
+    echo "Error: Target file does not exist"
+    exit 1
+fi
+
+echo "Searching symlinks to: $TARGET"
+
+# Способ 1: find + readlink
+echo -e "\nMethod 1 (find + readlink):"
+find / -type l -exec sh -c '
+    for link; do
+        if [ "$(readlink -f "$link")" = "'"$TARGET"'" ]; then
+            echo "$link"
+        fi
+    done
+' sh {} + 2>/dev/null
+
+# Способ 2: ls + grep
+echo -e "\nMethod 2 (ls + grep):"
+ls -lR / 2>/dev/null | grep -E "-> ${TARGET//\//\\/}$" | awk -F': ' '{print $1}'
+-----------------------------------------------
+
+chmod +x find_symlinks.sh
+./find_symlinks.sh /home/eugene/OC1/output.txt
+Поиск всех символьных ссылок на файл: /home/eugene/OC1/output.txt
+-----------------------------------------------
+Найдена ссылка: /home/eugene/cp_symlink.txt -> /home/eugene/OC1/output.txt
+  Права: lrwxrwxrwx
+  Владелец: eugene
+  Дата создания: мая 9 15:19
+-----------------------------------------------
+Найдена ссылка: /home/eugene/ln_symlink.txt -> /home/eugene/OC1/output.txt
+  Права: lrwxrwxrwx
+  Владелец: eugene
+  Дата создания: мая 9 15:19
+-----------------------------------------------
+Найдена ссылка: /home/eugene/python_symlink.txt -> /home/eugene/OC1/output.txt
+  Права: lrwxrwxrwx
+  Владелец: eugene
+  Дата создания: мая 9 15:19
+-----------------------------------------------
+Найдена ссылка: /home/eugene/OC1/output_link.txt -> /home/eugene/OC1/output.txt
+  Права: lrwxrwxrwx
+  Владелец: eugene
+  Дата создания: мая 9 15:11
+-----------------------------------------------
+Найдена ссылка: /home/eugene/perl_symlink.txt -> /home/eugene/OC1/output.txt
+  Права: lrwxrwxrwx
+  Владелец: eugene
+  Дата создания: мая 9 15:19
+-----------------------------------------------
+Поиск завершен
+
+-----------------------------------------------
+Задание 5

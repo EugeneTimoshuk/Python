@@ -1,0 +1,1473 @@
+Задание 1
+-------------------------------------------------------------------
+ls -l / | grep '^-' | head -1 | awk '{print "/"$NF}' 
+/swap.img
+-------------------------------------------------------------------
+ls -l / | grep '^d' | head -1 | awk '{print "/"$NF}' 
+/bin.usr-is-merged
+-------------------------------------------------------------------
+ls -l /dev | grep '^l' | head -1 | awk '{print "/dev/"$NF}' 
+/dev/sr0
+-------------------------------------------------------------------
+ls -l /dev | grep '^b' | head -1 | awk '{print "/dev/"$NF}'
+/dev/loop0
+-------------------------------------------------------------------
+ls -l /dev | grep '^c' | head -1 | awk '{print "/dev/"$NF}' 
+/dev/autofs
+-------------------------------------------------------------------
+ls -l /run | grep '^s' | head -1 | awk '{print "/run/"$NF}'
+/run/snapd-snap.socket
+-------------------------------------------------------------------
+ls -l /run/systemd | grep '^p' | head -1 | awk '{print "/run/systemd/"$NF}'
+Ничего не выдал
+-------------------------------------------------------------------
+Работа скрипта 
+micro file_types.sh
+
+----------------------------
+#!/bin/bash
+
+# Проверяем, что передано имя выходного файла
+if [ -z "$1" ]; then
+    echo "Usage: $0 <output_file1>"
+    exit 1
+fi
+
+output_file="$1"
+
+# Очищаем выходной файл
+> "$output_file1"
+
+# Функция для поиска и записи первого найденного файла определенного типа
+find_and_write() {
+    local path="$1"
+    local pattern="$2"
+    local prefix="$3"
+    
+    local found=$(ls -l "$path" 2>/dev/null | grep "$pattern" | head -1 | awk -v p="$prefix" '{print p$NF}')
+    if [ -n "$found" ]; then
+        echo "$found" >> "$output_file"
+    fi
+}
+
+# Ищем примеры каждого типа файлов
+find_and_write / '^-' '/'               # Обычный файл
+find_and_write / '^d' '/'               # Директория
+find_and_write /dev '^l' '/dev/'        # Символическая ссылка
+find_and_write /dev '^b' '/dev/'        # Блочное устройство
+find_and_write /dev '^c' '/dev/'        # Символьное устройство
+find_and_write /run '^s' '/run/'        # Сокет
+find_and_write /run/systemd '^p' '/run/systemd/' # Именованный канал (FIFO)
+
+echo "Результаты сохранены в $output_file"
+----------------------------
+
+chmod +x file_types.sh 
+./file_types.sh result.txt
+cat result.txt 
+/swap.img
+/bin.usr-is-merged
+/dev/sr0
+/dev/loop0
+/dev/autofs
+/run/snapd-snap.socket
+-------------------------------------------------------------------
+Задание номер 2
+touch find_hard.sh
+----------------------------
+
+#!/bin/bash
+
+[ -z "$1" ] && echo "Usage: $0 <target_file>" && exit 1
+
+target="$1"
+[ ! -e "$target" ] && echo "Error: File '$target' not found" && exit 1
+
+# Получаем точные данные файла
+inode=$(stat -c "%i" "$target")
+device_major_minor=$(stat -c "%d" "$target")
+device_name=$(df "$target" | awk 'NR==2 {print $1}')
+
+echo "Searching for hard links to: $target"
+echo "Inode: $inode, Device: $device_name"
+echo "----------------------------------------"
+
+# Метод 1: Через debugfs (самый надежный)
+if command -v debugfs &>/dev/null; then
+    echo "Method 1 (debugfs):"
+    sudo debugfs -R "ncheck $inode" "$device_name" 2>/dev/null | \
+    awk -v target="$target" '$2 != target {print $2}'
+else
+    echo "debugfs not installed, skipping method 1"
+fi
+
+# Метод 2: Через find (если разрешено)
+echo "----------------------------------------"
+echo "Method 2 (find):"
+find / -xdev -inum "$inode" ! -path "$target" 2>/dev/null
+
+# Метод 3: Альтернативный способ через ls
+echo "----------------------------------------"
+echo "Method 3 (ls/awk):"
+ls -lRi / 2>/dev/null | \
+awk -v inode="$inode" -v target="$target" '
+    $1 == inode {
+        for(i=9; i<=NF; i++) {
+            if($i != target) {
+                path = $i
+                for(j=i+1; j<=NF; j++) {
+                    path = path " " $j
+                }
+                print path
+                next
+            }
+        }
+    }'
+
+echo "----------------------------------------"
+echo "Search completed"
+
+----------------------------
+chmod +x find_hard.sh 
+sudo ./find_hard.sh  /home/eugene/OC1/result.txt
+
+earching for hard links to: /home/eugene/OC1/result.txt
+Inode: 922170, Device: /dev/sda2
+----------------------------------------
+Method 1 (debugfs):
+Pathname
+/home/eugene/backup_result.txt
+/tmp/result_backup.txt
+----------------------------------------
+Method 2 (find):
+/tmp/result_backup.txt
+/home/eugene/backup_result.txt
+----------------------------------------
+Method 3 (ls/awk):
+14:24 backup_result.txt
+14:24 result.txt
+14:24 result_backup.txt
+----------------------------------------
+Search completed
+-------------------------------------------------------------------
+Задание 3
+Способ 1: Через ln -s
+ln -s /home/eugene/OC1/output.txt /home/eugene/ln_symlink.txt
+Способ 2: Через cp -s
+cp -s /home/eugene/OC1/output.txt /home/eugene/cp_symlink.txt
+Способ 3: Через Perl
+perl -e 'symlink("/home/eugene/OC1/output.txt", "/home/eugene/perl_symlink.txt")'
+Способ 4: Через Python
+python3 -c 'import os; os.symlink("/home/eugene/OC1/output.txt", "/home/eugene/python_symlink.txt")'
+ls -l /home/eugene/ | grep '^l'
+lrwxrwxrwx 1 eugene eugene   27 мая  9 15:19 cp_symlink.txt -> /home/eugene/OC1/output.txt
+lrwxrwxrwx 1 eugene eugene   27 мая  9 15:19 ln_symlink.txt -> /home/eugene/OC1/output.txt
+lrwxrwxrwx 1 eugene eugene   27 мая  9 15:19 perl_symlink.txt -> /home/eugene/OC1/output.txt
+lrwxrwxrwx 1 eugene eugene   27 мая  9 15:19 python_symlink.txt -> /home/eugene/OC1/output.txt
+----------------------------------------
+
+Через скрипт
+touch find_symlinks.sh
+micro find_symlinks.sh 
+----------------------------------------
+#!/bin/bash
+
+if [ $# -ne 1 ]; then
+    echo "Использование: $0 <целевой_файл>"
+    exit 1
+fi
+
+TARGET=$(readlink -f "$1")
+if [ ! -e "$TARGET" ]; then
+    echo "Ошибка: Файл '$1' не существует"
+    exit 1
+fi
+
+echo "Поиск символьных ссылок на: $TARGET"
+echo "----------------------------------"
+
+# Метод 1: Используя find и readlink
+echo -e "\nМетод 1 (find + readlink):"
+find / -type l -exec sh -c '
+    for link; do
+        if [ "$(readlink -f "$link")" = "'"$TARGET"'" ]; then
+            echo "$link"
+        fi
+    done
+' sh {} + 2>/dev/null | sort | uniq
+
+# Метод 2: Используя ls и grep
+echo -e "\nМетод 2 (ls + grep):"
+ls -lR / 2>/dev/null | awk -v target="$TARGET" '
+    /^[^d].* -> / {
+        split($0, parts, " -> ");
+        if (parts[2] == target) {
+            gsub(/:$/, "", parts[1]);
+            print parts[1]
+        }
+    }
+' | sort | uniq
+
+echo -e "\nПоиск завершен"
+
+----------------------------------------
+
+chmod +x find_symlinks.sh
+./find_symlinks.sh
+
+=== Часть 1: Демонстрация способов создания символьных ссылок ===
+Создан тестовый файл: original_file.txt
+
+1. Создано через ln -s: link_ln.txt -> original_file.txt
+2. Создано через cp -s: link_cp.txt -> original_file.txt
+3. Создано через Perl: link_perl.txt -> original_file.txt
+4. Создано через Python: link_python.txt -> original_file.txt
+5. Создано через bash: link_bash.txt -> original_file.txt
+
+Проверка созданных ссылок:
+lrwxrwxrwx 1 eugene eugene 17 мая  9 16:05 link_bash.txt -> original_file.txt
+lrwxrwxrwx 1 eugene eugene 17 мая  9 16:05 link_cp.txt -> original_file.txt
+lrwxrwxrwx 1 eugene eugene 17 мая  9 16:05 link_ln.txt -> original_file.txt
+lrwxrwxrwx 1 eugene eugene 17 мая  9 16:05 link_perl.txt -> original_file.txt
+lrwxrwxrwx 1 eugene eugene 17 мая  9 16:05 link_python.txt -> original_file.txt
+
+
+-----------------------------------------------
+Задание 4
+touch find_symlinks2.sh
+micro find_symlinks2.sh
+-----------------------------------------------
+
+#!/bin/bash
+
+if [ $# -ne 1 ]; then
+    echo "Usage: $0 <target_file>"
+    exit 1
+fi
+
+TARGET=$(readlink -f "$1")
+if [ ! -e "$TARGET" ]; then
+    echo "Error: Target file does not exist"
+    exit 1
+fi
+
+echo "Searching symlinks to: $TARGET"
+
+# Способ 1: find + readlink
+echo -e "\nMethod 1 (find + readlink):"
+find / -type l -exec sh -c '
+    for link; do
+        if [ "$(readlink -f "$link")" = "'"$TARGET"'" ]; then
+            echo "$link"
+        fi
+    done
+' sh {} + 2>/dev/null
+
+# Способ 2: ls + grep
+echo -e "\nMethod 2 (ls + grep):"
+ls -lR / 2>/dev/null | grep -E "-> ${TARGET//\//\\/}$" | awk -F': ' '{print $1}'
+-----------------------------------------------
+
+chmod +x find_symlinks.sh
+./find_symlinks.sh /home/eugene/OC1/output.txt
+Поиск всех символьных ссылок на файл: /home/eugene/OC1/output.txt
+-----------------------------------------------
+Найдена ссылка: /home/eugene/cp_symlink.txt -> /home/eugene/OC1/output.txt
+  Права: lrwxrwxrwx
+  Владелец: eugene
+  Дата создания: мая 9 15:19
+-----------------------------------------------
+Найдена ссылка: /home/eugene/ln_symlink.txt -> /home/eugene/OC1/output.txt
+  Права: lrwxrwxrwx
+  Владелец: eugene
+  Дата создания: мая 9 15:19
+-----------------------------------------------
+Найдена ссылка: /home/eugene/python_symlink.txt -> /home/eugene/OC1/output.txt
+  Права: lrwxrwxrwx
+  Владелец: eugene
+  Дата создания: мая 9 15:19
+-----------------------------------------------
+Найдена ссылка: /home/eugene/OC1/output_link.txt -> /home/eugene/OC1/output.txt
+  Права: lrwxrwxrwx
+  Владелец: eugene
+  Дата создания: мая 9 15:11
+-----------------------------------------------
+Найдена ссылка: /home/eugene/perl_symlink.txt -> /home/eugene/OC1/output.txt
+  Права: lrwxrwxrwx
+  Владелец: eugene
+  Дата создания: мая 9 15:19
+-----------------------------------------------
+Поиск завершен
+
+-----------------------------------------------
+Задание 5
+Подсчет количества строк в файле
+find /home/eugene/OC1/output.txt -exec wc -l {} \;
+302 /home/eugene/OC1/output.txt
+-----------------------------------------------
+Поиск файла и архивирование
+find /home/eugene/OC1/output.txt -exec tar -czvf backup.tar.gz -C /home/eugene/OC1 output.txt \;
+output.txt
+-----------------------------------------------
+Изменение прав доступа
+find /home/eugene/OC1/output.txt -exec chmod 644 {} \;
+-----------------------------------------------
+Поиск и вывод содержимого
+find /home/eugene/OC1/output.txt -exec cat {} \;
+ВСЕ ВЫВЕЛ
+-----------------------------------------------
+Проверка времени доступа к файлу
+find /home/eugene/OC1/output.txt -printf "Время доступа: %a\nВремя изменения: %t\nВремя изменения статуса: %c\n"
+Время доступа: Fri May  9 16:25:58.0481932710 2025
+Время изменения: Fri May  9 16:15:21.9104985580 2025
+Время изменения статуса: Fri May  9 16:24:24.3393698010 2025
+-----------------------------------------------
+Задание 6
+Текстовый файл (UTF-8)
+echo "Тест" > textfile.txt
+
+hexdump -C textfile.txt  
+00000000  d0 a2 d0 b5 d1 81 d1 82  0a                       |.........|
+00000009
+
+od -tx1 -tc textfile.txt
+0000000  d0  a2  d0  b5  d1  81  d1  82  0a
+        320 242 320 265 321 201 321 202  \n
+0000011
+------------------------
+ELF-бинарник (исполняемый файл)
+hexdump -C /bin/ls | head -20
+00000000  7f 45 4c 46 02 01 01 00  00 00 00 00 00 00 00 00  |.ELF............|
+00000010  03 00 3e 00 01 00 00 00  30 6d 00 00 00 00 00 00  |..>.....0m......|
+00000020  40 00 00 00 00 00 00 00  28 24 02 00 00 00 00 00  |@.......($......|
+00000030  00 00 00 00 40 00 38 00  0d 00 40 00 1f 00 1e 00  |....@.8...@.....|
+00000040  06 00 00 00 04 00 00 00  40 00 00 00 00 00 00 00  |........@.......|
+00000050  40 00 00 00 00 00 00 00  40 00 00 00 00 00 00 00  |@.......@.......|
+00000060  d8 02 00 00 00 00 00 00  d8 02 00 00 00 00 00 00  |................|
+00000070  08 00 00 00 00 00 00 00  03 00 00 00 04 00 00 00  |................|
+00000080  18 03 00 00 00 00 00 00  18 03 00 00 00 00 00 00  |................|
+00000090  18 03 00 00 00 00 00 00  1c 00 00 00 00 00 00 00  |................|
+000000a0  1c 00 00 00 00 00 00 00  01 00 00 00 00 00 00 00  |................|
+000000b0  01 00 00 00 04 00 00 00  00 00 00 00 00 00 00 00  |................|
+000000c0  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
+000000d0  f8 36 00 00 00 00 00 00  f8 36 00 00 00 00 00 00  |.6.......6......|
+000000e0  00 10 00 00 00 00 00 00  01 00 00 00 05 00 00 00  |................|
+000000f0  00 40 00 00 00 00 00 00  00 40 00 00 00 00 00 00  |.@.......@......|
+00000100  00 40 00 00 00 00 00 00  b1 4d 01 00 00 00 00 00  |.@.......M......|
+00000110  b1 4d 01 00 00 00 00 00  00 10 00 00 00 00 00 00  |.M..............|
+00000120  01 00 00 00 04 00 00 00  00 90 01 00 00 00 00 00  |................|
+00000130  00 90 01 00 00 00 00 00  00 90 01 00 00 00 00 00  |................|
+
+od -Ax -tx1 /bin/ls | head -5
+000000 7f 45 4c 46 02 01 01 00 00 00 00 00 00 00 00 00
+000010 03 00 3e 00 01 00 00 00 30 6d 00 00 00 00 00 00
+000020 40 00 00 00 00 00 00 00 28 24 02 00 00 00 00 00
+000030 00 00 00 00 40 00 38 00 0d 00 40 00 1f 00 1e 00
+000040 06 00 00 00 04 00 00 00 40 00 00 00 00 00 00 00
+------------------------
+Анализ файла-каталога
+Просмотр сырых данных каталога
+mkdir testdir
+hexdump -C testdir
+hexdump: testdir: Это каталог
+
+ls -fai1 testdir | od -c
+0000000   9   2   0   0   3   1       .   .  \n   9   2   0   1   2   7
+0000020       .  \n
+0000023
+------------------------
+Эксперимент с изменениями в каталоге
+ls -i testdir > before.txt
+hexdump -C testdir > before.hex
+hexdump: testdir: Это каталог
+
+touch testdir/newfile.txt
+ls -i testdir > after_add.txt
+hexdump -C testdir > after_add.hex
+hexdump: testdir: Это каталог
+diff -u before.hex after_add.hex
+
+xxd -g 1 -l 256 /home/eugene/OC1/testdir 
+xxd: Is a directory
+stat -c %i /home/eugene/OC1/testdir
+920127
+----------------------------------------------------
+Задание 7
+touch dir_size_experiment.sh
+micro dir_size_experiment.sh
+-------------------------------------------------------
+#!/bin/bash
+
+# Создаём временный каталог для экспериментов
+TEST_DIR="./test_dir_$(date +%s)"
+mkdir -p "$TEST_DIR"
+echo "Создан тестовый каталог: $TEST_DIR"
+
+# Функция для отображения размера каталога
+show_dir_size() {
+    echo "Текущий размер каталога:"
+    du -sh "$TEST_DIR"
+    echo "Количество файлов:"
+    find "$TEST_DIR" -type f | wc -l
+    echo "Количество подкаталогов:"
+    find "$TEST_DIR" -type d | wc -l
+    echo "Inode каталога:"
+    ls -id "$TEST_DIR"
+}
+
+# 1. Показываем начальный размер
+echo -e "\n=== Начальное состояние ==="
+show_dir_size
+
+# 2. Создаём 1000 маленьких файлов
+echo -e "\n=== Создаём 1000 файлов по 1Кб ==="
+for i in {1..1000}; do
+    dd if=/dev/zero of="$TEST_DIR/file_$i" bs=1K count=1 &>/dev/null
+done
+show_dir_size
+
+# 3. Создаём 100 подкаталогов
+echo -e "\n=== Создаём 100 подкаталогов ==="
+for i in {1..100}; do
+    mkdir -p "$TEST_DIR/subdir_$i"
+done
+show_dir_size
+
+# 4. Создаём по 10 файлов в каждом подкаталоге
+echo -e "\n=== Создаём по 10 файлов в каждом подкаталоге ==="
+for dir in "$TEST_DIR"/subdir_*; do
+    for i in {1..10}; do
+        touch "$dir/subfile_$i"
+    done
+done
+show_dir_size
+
+# 5. Удаляем половину файлов
+echo -e "\n=== Удаляем 500 файлов из корня ==="
+find "$TEST_DIR" -maxdepth 1 -type f -name "file_*" | head -500 | xargs rm -f
+show_dir_size
+
+# 6. Удаляем все подкаталоги
+echo -e "\n=== Удаляем все подкаталоги ==="
+rm -rf "$TEST_DIR"/subdir_*
+show_dir_size
+
+# 7. Удаляем оставшиеся файлы
+echo -e "\n=== Удаляем оставшиеся файлы ==="
+rm -f "$TEST_DIR"/*
+show_dir_size
+
+# Удаляем тестовый каталог
+read -p "Удалить тестовый каталог $TEST_DIR? [y/N] " -n 1 -r
+echo
+if [[ $REPLY =~ ^[Yy]$ ]]; then
+    rm -rf "$TEST_DIR"
+    echo "Каталог удалён"
+else
+    echo "Каталог сохранён: $TEST_DIR"
+fi
+
+------------------------------------------
+chmod +x dir_size_experiment.sh
+./dir_size_experiment.sh
+Создан тестовый каталог: ./test_dir_1746907203
+
+=== Начальное состояние ===
+Текущий размер каталога:
+4,0K	./test_dir_1746907203
+Количество файлов:
+0
+Количество подкаталогов:
+1
+Inode каталога:
+919855 ./test_dir_1746907203
+
+=== Создаём 1000 файлов по 1Кб ===
+Текущий размер каталога:
+4,0M	./test_dir_1746907203
+Количество файлов:
+1000
+Количество подкаталогов:
+1
+Inode каталога:
+919855 ./test_dir_1746907203
+
+=== Создаём 100 подкаталогов ===
+Текущий размер каталога:
+4,4M	./test_dir_1746907203
+Количество файлов:
+1000
+Количество подкаталогов:
+101
+Inode каталога:
+919855 ./test_dir_1746907203
+
+=== Создаём по 10 файлов в каждом подкаталоге ===
+Текущий размер каталога:
+4,4M	./test_dir_1746907203
+Количество файлов:
+2000
+Количество подкаталогов:
+101
+Inode каталога:
+919855 ./test_dir_1746907203
+
+=== Удаляем 500 файлов из корня ===
+Текущий размер каталога:
+2,4M	./test_dir_1746907203
+Количество файлов:
+1500
+Количество подкаталогов:
+101
+Inode каталога:
+919855 ./test_dir_1746907203
+
+=== Удаляем все подкаталоги ===
+Текущий размер каталога:
+2,0M	./test_dir_1746907203
+Количество файлов:
+500
+Количество подкаталогов:
+1
+Inode каталога:
+919855 ./test_dir_1746907203
+
+=== Удаляем оставшиеся файлы ===
+Текущий размер каталога:
+36K	./test_dir_1746907203
+Количество файлов:
+0
+Количество подкаталогов:
+1
+Inode каталога:
+919855 ./test_dir_1746907203
+Удалить тестовый каталог ./test_dir_1746907203? [y/N] y
+Каталог удалён
+
+--------------------------------------------------------
+Задание 8
+Просмотр содержимого /etc/passwd
+cat /etc/passwd
+root:x:0:0:root:/root:/bin/bash
+daemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin
+bin:x:2:2:bin:/bin:/usr/sbin/nologin
+sys:x:3:3:sys:/dev:/usr/sbin/nologin
+sync:x:4:65534:sync:/bin:/bin/sync
+games:x:5:60:games:/usr/games:/usr/sbin/nologin
+man:x:6:12:man:/var/cache/man:/usr/sbin/nologin
+lp:x:7:7:lp:/var/spool/lpd:/usr/sbin/nologin
+mail:x:8:8:mail:/var/mail:/usr/sbin/nologin
+news:x:9:9:news:/var/spool/news:/usr/sbin/nologin
+uucp:x:10:10:uucp:/var/spool/uucp:/usr/sbin/nologin
+proxy:x:13:13:proxy:/bin:/usr/sbin/nologin
+www-data:x:33:33:www-data:/var/www:/usr/sbin/nologin
+backup:x:34:34:backup:/var/backups:/usr/sbin/nologin
+list:x:38:38:Mailing List Manager:/var/list:/usr/sbin/nologin
+irc:x:39:39:ircd:/run/ircd:/usr/sbin/nologin
+_apt:x:42:65534::/nonexistent:/usr/sbin/nologin
+nobody:x:65534:65534:nobody:/nonexistent:/usr/sbin/nologin
+systemd-network:x:998:998:systemd Network Management:/:/usr/sbin/nologin
+systemd-timesync:x:996:996:systemd Time Synchronization:/:/usr/sbin/nologin
+dhcpcd:x:100:65534:DHCP Client Daemon,,,:/usr/lib/dhcpcd:/bin/false
+messagebus:x:101:101::/nonexistent:/usr/sbin/nologin
+syslog:x:102:102::/nonexistent:/usr/sbin/nologin
+systemd-resolve:x:991:991:systemd Resolver:/:/usr/sbin/nologin
+uuidd:x:103:103::/run/uuidd:/usr/sbin/nologin
+usbmux:x:104:46:usbmux daemon,,,:/var/lib/usbmux:/usr/sbin/nologin
+tss:x:105:105:TPM software stack,,,:/var/lib/tpm:/bin/false
+systemd-oom:x:990:990:systemd Userspace OOM Killer:/:/usr/sbin/nologin
+kernoops:x:106:65534:Kernel Oops Tracking Daemon,,,:/:/usr/sbin/nologin
+whoopsie:x:107:109::/nonexistent:/bin/false
+dnsmasq:x:999:65534:dnsmasq:/var/lib/misc:/usr/sbin/nologin
+avahi:x:108:111:Avahi mDNS daemon,,,:/run/avahi-daemon:/usr/sbin/nologin
+tcpdump:x:109:112::/nonexistent:/usr/sbin/nologin
+sssd:x:110:113:SSSD system user,,,:/var/lib/sss:/usr/sbin/nologin
+speech-dispatcher:x:111:29:Speech Dispatcher,,,:/run/speech-dispatcher:/bin/false
+cups-pk-helper:x:112:114:user for cups-pk-helper service,,,:/nonexistent:/usr/sbin/nologin
+fwupd-refresh:x:989:989:Firmware update daemon:/var/lib/fwupd:/usr/sbin/nologin
+saned:x:113:116::/var/lib/saned:/usr/sbin/nologin
+geoclue:x:114:117::/var/lib/geoclue:/usr/sbin/nologin
+cups-browsed:x:115:114::/nonexistent:/usr/sbin/nologin
+hplip:x:116:7:HPLIP system user,,,:/run/hplip:/bin/false
+gnome-remote-desktop:x:988:988:GNOME Remote Desktop:/var/lib/gnome-remote-desktop:/usr/sbin/nologin
+polkitd:x:987:987:User for polkitd:/:/usr/sbin/nologin
+rtkit:x:117:119:RealtimeKit,,,:/proc:/usr/sbin/nologin
+colord:x:118:120:colord colour management daemon,,,:/var/lib/colord:/usr/sbin/nologin
+gnome-initial-setup:x:119:65534::/run/gnome-initial-setup/:/bin/false
+gdm:x:120:121:Gnome Display Manager:/var/lib/gdm3:/bin/false
+nm-openvpn:x:121:122:NetworkManager OpenVPN,,,:/var/lib/openvpn/chroot:/usr/sbin/nologin
+eugene:x:1000:1000:eugene:/home/eugene:/bin/bash
+sshd:x:122:65534::/run/sshd:/usr/sbin/nologin
+
+# Форматированный вывод с разделением по столбцам
+awk -F: '{printf "%-15s %-5s %-5s %-30s %s\n", $1, $2, $3, $4, $6}' /etc/passwd | head
+root            x     0     0                              /root
+daemon          x     1     1                              /usr/sbin
+bin             x     2     2                              /bin
+sys             x     3     3                              /dev
+sync            x     4     65534                          /bin
+games           x     5     60                             /usr/games
+man             x     6     12                             /var/cache/man
+lp              x     7     7                              /var/spool/lpd
+mail            x     8     8                              /var/mail
+news            x     9     9                              /var/spool/news
+----------------------------------------------
+Анализ прав доступа к /etc/passwd
+ls -l /etc/passwd
+-rw-r--r-- 1 root root 2910 мая  3 02:28 /etc/passwd
+----------------------------------------------
+Просмотр содержимого /etc/shadow
+sudo cat /etc/shadow | head -5
+[sudo] пароль для eugene: 
+root:*:20134:0:99999:7:::
+daemon:*:20134:0:99999:7:::
+bin:*:20134:0:99999:7:::
+sys:*:20134:0:99999:7:::
+sync:*:20134:0:99999:7:::
+----------------------------------------------
+Анализ прав доступа к /etc/shadow
+ls -l /etc/shadow
+-rw-r----- 1 root shadow 1358 мая  3 02:28 /etc/shadow
+----------------------------------------------
+Заданиие 9
+Анализ системных файлов
+ls -l /etc/passwd /etc/shadow /usr/bin/passwd
+-rw-r--r-- 1 root root    2910 мая  3 02:28 /etc/passwd
+-rw-r----- 1 root shadow  1358 мая  3 02:28 /etc/shadow
+-rwsr-xr-x 1 root root   64152 мая 30  2024 /usr/bin/passwd
+------------------------------------------
+Проверка специальных битов
+find /usr/bin -perm /4000 -ls | head
+  3278305     40 -rwsr-xr-x   1 root     root        39296 дек  5 05:26 /usr/bin/umount
+  3277905     40 -rwsr-xr-x   1 root     root        40664 мая 30  2024 /usr/bin/newgrp
+  3277580     40 -rwsr-xr-x   1 root     root        39296 апр  8  2024 /usr/bin/fusermount3
+  3278204     56 -rwsr-xr-x   1 root     root        55680 дек  5 05:26 /usr/bin/su
+  3277957     64 -rwsr-xr-x   1 root     root        64152 мая 30  2024 /usr/bin/passwd
+  3277998     32 -rwsr-xr-x   1 root     root        30952 дек  2 14:59 /usr/bin/pkexec
+  3277885     52 -rwsr-xr-x   1 root     root        51584 дек  5 05:26 /usr/bin/mount
+  3277637     76 -rwsr-xr-x   1 root     root        76248 мая 30  2024 /usr/bin/gpasswd
+  3278205    272 -rwsr-xr-x   1 root     root       277936 апр  8  2024 /usr/bin/sudo
+  3277413     72 -rwsr-xr-x   1 root     root        72792 мая 30  2024 /usr/bin/chfn
+----------------------------------------------
+Тестовая среда для проверки сочетаемости
+sudo useradd testuser && sudo groupadd testgroup
+mkdir test_dir && touch test_file
+sudo chown testuser:testgroup test_file
+sudo chmod 755 test_file # rwxr-xr-x
+sudo -u testuser bash -c "echo Test > test_file" 
+sudo chmod 700 test_file # rwx------
+sudo -u testuser bash -c "echo Test > test_file"
+sudo userdel testuser && sudo groupdel testgroup
+rm -rf test_dir test_file
+----------------------------------------------
+Задание 9.1
+mkdir ~/perm_test && cd ~/perm_test
+touch file1.txt file2.txt file3.txt
+mkdir dir1 dir2
+sudo useradd user1 && sudo useradd user2
+sudo groupadd test_group
+sudo chown user1 file1.txt
+sudo chown user1:test_group file2.txt
+sudo chown -R user1 dir1
+sudo chmod 755 file1.txt
+sudo chmod 640 file2.txt
+sudo chmod -R 750 dir1
+sudo chmod u+x file3.txt
+sudo chmod g-w file2.txt
+sudo chmod u+s file1.txt
+sudo chmod g+s dir1
+sudo chmod +t dir2
+ls -l
+итого 8
+drwxr-s--- 2 user1  eugene     4096 мая 11 00:17 dir1
+drwxrwxr-t 2 eugene eugene     4096 мая 11 00:17 dir2
+-rwsr-xr-x 1 user1  eugene        0 мая 11 00:17 file1.txt
+-rw-r----- 1 user1  test_group    0 мая 11 00:17 file2.txt
+-rwxrw-r-- 1 eugene test_group    0 мая 11 00:17 file3.txt
+----------------------------------------------
+Задание 9.2
+touch ~/test_script.sh
+chmod u+s ~/test_script.sh
+ls -l ~/test_script.sh
+-rwSrw-r-- 1 eugene eugene 0 мая 11 00:23 /home/eugene/test_script.sh
+----------------------------------------------
+Задание 9.3
+touch file1 file2 file3
+sudo groupadd group1 && sudo groupadd group2
+sudo chown user1:group1 file1
+sudo chmod 740 file1
+sudo chown user1:group2 file2
+sudo chmod 704 file2
+sudo chown user2:group1 file3
+sudo chmod 047 file3
+sudo -u user1 bash -c "ls -l file1 file2 file3"
+-rwxr----- 1 user1 group1 0 мая 11 00:26 file1
+-rwx---r-- 1 user1 group2 0 мая 11 00:26 file2
+----r--rwx 1 user2 group1 0 мая 11 00:26 file3
+sudo -u user1 bash -c "cat file1"
+sudo -u user1 bash -c "cat file2"
+sudo -u user1 bash -c "cat file3"
+sudo usermod -aG group1 user1
+sudo -u user1 bash -c "cat file1"
+----------------------------------------------
+Задание 9.4
+mkdir -p ~/test_dir && cd ~/test_dir
+touch file.txt
+mkdir subdir
+chmod 755 file.txt subdir
+chmod 000 file.txt && ls -l file.txt
+---------- 1 eugene eugene 0 мая 11 00:37 file.txt
+cat file.txt 2>/dev/null || echo "Не могу прочитать"
+Не могу прочитать
+echo "test" > file.txt 2>/dev/null || echo "Не могу записать"
+bash: file.txt: Отказано в доступе
+Не могу записать
+chmod +x file.txt 2>/dev/null || echo "Не могу изменить права"
+chmod 400 file.txt
+cat file.txt 2>/dev/null && echo "Успешное чтение"
+Успешное чтение
+echo "test" > file.txt 2>/dev/null || echo "Не могу записать"
+bash: file.txt: Отказано в доступе
+Не могу записать
+chmod 200 file.txt
+echo "test" > file.txt 2>/dev/null && echo "Успешная запись"
+Успешная запись
+cat file.txt 2>/dev/null || echo "Не могу прочитать"
+Не могу прочитать
+chmod 100 file.txt
+./file.txt 2>/dev/null && echo "Успешное выполнение"
+chmod 000 subdir && ls -ld subdir
+d--------- 2 eugene eugene 4096 мая 11 00:37 subdir
+ls subdir 2>/dev/null || echo "Не могу просмотреть"
+Не могу просмотреть
+touch subdir/newfile 2>/dev/null || echo "Не могу создать файл"
+Не могу создать файл
+cd subdir 2>/dev/null || echo "Не могу войти"
+Не могу войти
+chmod 100 subdir
+cd subdir 2>/dev/null && echo "Успешный вход" && cd ..
+Успешный вход
+ls subdir 2>/dev/null || echo "Не могу просмотреть"
+Не могу просмотреть
+chmod 500 subdir
+ls subdir 2>/dev/null && echo "Успешный просмотр"
+Успешный просмотр
+touch subdir/newfile 2>/dev/null || echo "Не могу создать файл"
+Не могу создать файл
+chmod 300 subdir
+touch subdir/newfile 2>/dev/null && echo "Успешное создание файла"
+Успешное создание файла
+ls subdir 2>/dev/null || echo "Не могу просмотреть"
+Не могу просмотреть
+--------------------------------------------------------------------------------------------
+Задание 10
+sudo groupadd common_group
+sudo usermod -aG common_group user1
+sudo mkdir -p /shared && sudo touch /shared/secret.txt
+sudo echo "ConfidentialData" > /shared/secret.txt
+bash: /shared/secret.txt: Отказано в доступе
+echo "ConfidentialData" | sudo tee /shared/secret.txt >/dev/null
+
+cat <<EOF | sudo tee /usr/local/bin/access_gateway >/dev/null
+#!/bin/bash
+if [ \$# -ne 1 ]; then
+    echo "Usage: \$0 filename"
+    exit 1
+fi
+cat "/shared/\$1" 2>/dev/null || echo "Access denied"
+EOF
+
+sudo chown user1:common_group /shared/secret.txt
+sudo chmod 640 /shared/secret.txt
+sudo chown root:root /usr/local/bin/access_gateway
+sudo chmod 4755 /usr/local/bin/access_gateway
+udo -u user2 /usr/local/bin/access_gateway secret.txt
+Access denied
+sudo usermod -G "" user2
+sudo chmod 600 /shared/secret.txt 
+sudo -u user2 /usr/local/bin/access_gateway secret.txt
+Access denied
+--------------------------------------------------------------------------------------------
+Задание 11
+df -hT
+Файл.система   Тип   Размер Использовано  Дост Использовано% Cмонтировано в
+tmpfs          tmpfs   795M         1,6M  793M            1% /run
+/dev/sda2      ext4     59G          11G   45G           20% /
+tmpfs          tmpfs   3,9G            0  3,9G            0% /dev/shm
+tmpfs          tmpfs   5,0M         8,0K  5,0M            1% /run/lock
+tmpfs          tmpfs   795M         144K  794M            1% /run/user/1000
+lsblk -f
+NAME FSTYPE FSVER LABEL UUID                                 FSAVAIL FSUSE% MOUNTPOINTS
+loop0
+                                                                   0   100% /snap/bare/5
+loop1
+                                                                   0   100% /snap/core22/1748
+loop2
+                                                                   0   100% /snap/core22/1963
+loop3
+                                                                   0   100% /snap/firefox/5751
+loop4
+                                                                   0   100% /snap/firefox/6103
+loop5
+                                                                   0   100% /snap/firmware-updater/167
+loop6
+                                                                   0   100% /snap/gnome-42-2204/202
+loop7
+                                                                   0   100% /snap/gtk-common-themes/1535
+loop8
+                                                                   0   100% /snap/snap-store/1248
+loop9
+                                                                   0   100% /snap/snap-store/1270
+loop10
+                                                                   0   100% /snap/snapd/23545
+loop11
+                                                                   0   100% /snap/snapd/24505
+loop12
+                                                                   0   100% /snap/snapd-desktop-integration/253
+sda                                                                         
+├─sda1
+│                                                                           
+└─sda2
+     ext4   1.0         e4b5feaf-b1d4-4f7c-a457-4f1de8ec6c6d   44,9G    18% /
+sr0                                       
+cat /etc/fstab
+# /etc/fstab: static file system information.
+#
+# Use 'blkid' to print the universally unique identifier for a
+# device; this may be used with UUID= as a more robust way to name devices
+# that works even if disks are added and removed. See fstab(5).
+#
+# <file system> <mount point>   <type>  <options>       <dump>  <pass>
+# / was on /dev/sda2 during curtin installation
+/dev/disk/by-uuid/e4b5feaf-b1d4-4f7c-a457-4f1de8ec6c6d / ext4 defaults 0 1
+/swap.img	none	swap	sw	0	0
+findmnt --all
+TARGET SOURCE FSTYPE    OPTIONS
+/      /dev/sda2
+              ext4      rw,relatime
+├─/sys sysfs  sysfs     rw,nosuid,nodev,noexec,relatime
+│ ├─/sys/kernel/security
+│ │    securityfs
+│ │           securityf rw,nosuid,nodev,noexec,relatime
+│ ├─/sys/fs/cgroup
+│ │    cgroup2
+│ │           cgroup2   rw,nosuid,nodev,noexec,relatime,nsdelegate,memory_recurs
+│ ├─/sys/fs/pstore
+│ │    pstore pstore    rw,nosuid,nodev,noexec,relatime
+│ ├─/sys/fs/bpf
+│ │    bpf    bpf       rw,nosuid,nodev,noexec,relatime,mode=700
+│ ├─/sys/kernel/tracing
+│ │    tracefs
+│ │           tracefs   rw,nosuid,nodev,noexec,relatime
+│ ├─/sys/kernel/debug
+│ │    debugfs
+│ │           debugfs   rw,nosuid,nodev,noexec,relatime
+│ ├─/sys/fs/fuse/connections
+│ │    fusectl
+│ │           fusectl   rw,nosuid,nodev,noexec,relatime
+│ └─/sys/kernel/config
+│      configfs
+│             configfs  rw,nosuid,nodev,noexec,relatime
+├─/proc
+│      proc   proc      rw,nosuid,nodev,noexec,relatime
+│ └─/proc/sys/fs/binfmt_misc
+│      systemd-1
+│             autofs    rw,relatime,fd=32,pgrp=1,timeout=0,minproto=5,maxproto=5
+│   └─/proc/sys/fs/binfmt_misc
+│      binfmt_misc
+│             binfmt_mi rw,nosuid,nodev,noexec,relatime
+├─/dev udev   devtmpfs  rw,nosuid,relatime,size=4027888k,nr_inodes=1006972,mode=
+│ ├─/dev/pts
+│ │    devpts devpts    rw,nosuid,noexec,relatime,gid=5,mode=620,ptmxmode=000
+│ ├─/dev/shm
+│ │    tmpfs  tmpfs     rw,nosuid,nodev,inode64
+│ ├─/dev/mqueue
+│ │    mqueue mqueue    rw,nosuid,nodev,noexec,relatime
+│ └─/dev/hugepages
+│      hugetlbfs
+│             hugetlbfs rw,nosuid,nodev,relatime,pagesize=2M
+├─/run tmpfs  tmpfs     rw,nosuid,nodev,noexec,relatime,size=813116k,mode=755,in
+│ ├─/run/lock
+│ │    tmpfs  tmpfs     rw,nosuid,nodev,noexec,relatime,size=5120k,inode64
+│ ├─/run/snapd/ns
+│ │    tmpfs[/snapd/ns]
+│ │           tmpfs     rw,nosuid,nodev,noexec,relatime,size=813116k,mode=755,in
+│ │ ├─/run/snapd/ns/snapd-desktop-integration.mnt
+│ │ │  nsfs[mnt:[4026532433]]
+│ │ │         nsfs      rw
+│ │ ├─/run/snapd/ns/firefox.mnt
+│ │ │  nsfs[mnt:[4026532254]]
+│ │ │         nsfs      rw
+│ │ └─/run/snapd/ns/firmware-updater.mnt
+│ │    nsfs[mnt:[4026532841]]
+│ │           nsfs      rw
+│ └─/run/user/1000
+│      tmpfs  tmpfs     rw,nosuid,nodev,relatime,size=813112k,nr_inodes=203278,m
+│   ├─/run/user/1000/gvfs
+│   │  gvfsd-fuse
+│   │         fuse.gvfs rw,nosuid,nodev,relatime,user_id=1000,group_id=1000
+│   └─/run/user/1000/doc
+│      portal fuse.port rw,nosuid,nodev,relatime,user_id=1000,group_id=1000
+├─/snap/bare/5
+│      /dev/loop0
+│             squashfs  ro,nodev,relatime,errors=continue,threads=single
+├─/snap/core22/1748
+│      /dev/loop1
+│             squashfs  ro,nodev,relatime,errors=continue,threads=single
+├─/snap/firefox/5751
+│      /dev/loop3
+│             squashfs  ro,nodev,relatime,errors=continue,threads=single
+├─/snap/core22/1963
+│      /dev/loop2
+│             squashfs  ro,nodev,relatime,errors=continue,threads=single
+├─/snap/firmware-updater/167
+│      /dev/loop5
+│             squashfs  ro,nodev,relatime,errors=continue,threads=single
+├─/snap/gnome-42-2204/202
+│      /dev/loop6
+│             squashfs  ro,nodev,relatime,errors=continue,threads=single
+├─/snap/snap-store/1248
+│      /dev/loop8
+│             squashfs  ro,nodev,relatime,errors=continue,threads=single
+├─/snap/gtk-common-themes/1535
+│      /dev/loop7
+│             squashfs  ro,nodev,relatime,errors=continue,threads=single
+├─/snap/snapd-desktop-integration/253
+│      /dev/loop12
+│             squashfs  ro,nodev,relatime,errors=continue,threads=single
+├─/snap/snapd/23545
+│      /dev/loop10
+│             squashfs  ro,nodev,relatime,errors=continue,threads=single
+├─/snap/snapd/24505
+│      /dev/loop11
+│             squashfs  ro,nodev,relatime,errors=continue,threads=single
+├─/snap/snap-store/1270
+│      /dev/loop9
+│             squashfs  ro,nodev,relatime,errors=continue,threads=single
+└─/snap/firefox/6103
+       /dev/loop4
+              squashfs  ro,nodev,relatime,errors=continue,threads=single
+mount | column -t
+sysfs                                                    on  /sys                                         type  sysfs            (rw,nosuid,nodev,noexec,relatime)
+proc                                                     on  /proc                                        type  proc             (rw,nosuid,nodev,noexec,relatime)
+udev                                                     on  /dev                                         type  devtmpfs         (rw,nosuid,relatime,size=4027888k,nr_inodes=1006972,mode=755,inode64)
+devpts                                                   on  /dev/pts                                     type  devpts           (rw,nosuid,noexec,relatime,gid=5,mode=620,ptmxmode=000)
+tmpfs                                                    on  /run                                         type  tmpfs            (rw,nosuid,nodev,noexec,relatime,size=813116k,mode=755,inode64)
+/dev/sda2                                                on  /                                            type  ext4             (rw,relatime)
+securityfs                                               on  /sys/kernel/security                         type  securityfs       (rw,nosuid,nodev,noexec,relatime)
+tmpfs                                                    on  /dev/shm                                     type  tmpfs            (rw,nosuid,nodev,inode64)
+tmpfs                                                    on  /run/lock                                    type  tmpfs            (rw,nosuid,nodev,noexec,relatime,size=5120k,inode64)
+cgroup2                                                  on  /sys/fs/cgroup                               type  cgroup2          (rw,nosuid,nodev,noexec,relatime,nsdelegate,memory_recursiveprot)
+pstore                                                   on  /sys/fs/pstore                               type  pstore           (rw,nosuid,nodev,noexec,relatime)
+bpf                                                      on  /sys/fs/bpf                                  type  bpf              (rw,nosuid,nodev,noexec,relatime,mode=700)
+systemd-1                                                on  /proc/sys/fs/binfmt_misc                     type  autofs           (rw,relatime,fd=32,pgrp=1,timeout=0,minproto=5,maxproto=5,direct,pipe_ino=4885)
+tracefs                                                  on  /sys/kernel/tracing                          type  tracefs          (rw,nosuid,nodev,noexec,relatime)
+mqueue                                                   on  /dev/mqueue                                  type  mqueue           (rw,nosuid,nodev,noexec,relatime)
+debugfs                                                  on  /sys/kernel/debug                            type  debugfs          (rw,nosuid,nodev,noexec,relatime)
+hugetlbfs                                                on  /dev/hugepages                               type  hugetlbfs        (rw,nosuid,nodev,relatime,pagesize=2M)
+fusectl                                                  on  /sys/fs/fuse/connections                     type  fusectl          (rw,nosuid,nodev,noexec,relatime)
+configfs                                                 on  /sys/kernel/config                           type  configfs         (rw,nosuid,nodev,noexec,relatime)
+/var/lib/snapd/snaps/bare_5.snap                         on  /snap/bare/5                                 type  squashfs         (ro,nodev,relatime,errors=continue,threads=single,x-gdu.hide,x-gvfs-hide)
+/var/lib/snapd/snaps/core22_1748.snap                    on  /snap/core22/1748                            type  squashfs         (ro,nodev,relatime,errors=continue,threads=single,x-gdu.hide,x-gvfs-hide)
+/var/lib/snapd/snaps/firefox_5751.snap                   on  /snap/firefox/5751                           type  squashfs         (ro,nodev,relatime,errors=continue,threads=single,x-gdu.hide,x-gvfs-hide)
+/var/lib/snapd/snaps/core22_1963.snap                    on  /snap/core22/1963                            type  squashfs         (ro,nodev,relatime,errors=continue,threads=single,x-gdu.hide,x-gvfs-hide)
+/var/lib/snapd/snaps/firmware-updater_167.snap           on  /snap/firmware-updater/167                   type  squashfs         (ro,nodev,relatime,errors=continue,threads=single,x-gdu.hide,x-gvfs-hide)
+/var/lib/snapd/snaps/gnome-42-2204_202.snap              on  /snap/gnome-42-2204/202                      type  squashfs         (ro,nodev,relatime,errors=continue,threads=single,x-gdu.hide,x-gvfs-hide)
+/var/lib/snapd/snaps/snap-store_1248.snap                on  /snap/snap-store/1248                        type  squashfs         (ro,nodev,relatime,errors=continue,threads=single,x-gdu.hide,x-gvfs-hide)
+/var/lib/snapd/snaps/gtk-common-themes_1535.snap         on  /snap/gtk-common-themes/1535                 type  squashfs         (ro,nodev,relatime,errors=continue,threads=single,x-gdu.hide,x-gvfs-hide)
+/var/lib/snapd/snaps/snapd-desktop-integration_253.snap  on  /snap/snapd-desktop-integration/253          type  squashfs         (ro,nodev,relatime,errors=continue,threads=single,x-gdu.hide,x-gvfs-hide)
+/var/lib/snapd/snaps/snapd_23545.snap                    on  /snap/snapd/23545                            type  squashfs         (ro,nodev,relatime,errors=continue,threads=single,x-gdu.hide,x-gvfs-hide)
+/var/lib/snapd/snaps/snapd_24505.snap                    on  /snap/snapd/24505                            type  squashfs         (ro,nodev,relatime,errors=continue,threads=single,x-gdu.hide,x-gvfs-hide)
+/var/lib/snapd/snaps/snap-store_1270.snap                on  /snap/snap-store/1270                        type  squashfs         (ro,nodev,relatime,errors=continue,threads=single,x-gdu.hide,x-gvfs-hide)
+/var/lib/snapd/snaps/firefox_6103.snap                   on  /snap/firefox/6103                           type  squashfs         (ro,nodev,relatime,errors=continue,threads=single,x-gdu.hide,x-gvfs-hide)
+binfmt_misc                                              on  /proc/sys/fs/binfmt_misc                     type  binfmt_misc      (rw,nosuid,nodev,noexec,relatime)
+tmpfs                                                    on  /run/snapd/ns                                type  tmpfs            (rw,nosuid,nodev,noexec,relatime,size=813116k,mode=755,inode64)
+nsfs                                                     on  /run/snapd/ns/snapd-desktop-integration.mnt  type  nsfs             (rw)
+tmpfs                                                    on  /run/user/1000                               type  tmpfs            (rw,nosuid,nodev,relatime,size=813112k,nr_inodes=203278,mode=700,uid=1000,gid=1000,inode64)
+portal                                                   on  /run/user/1000/doc                           type  fuse.portal      (rw,nosuid,nodev,relatime,user_id=1000,group_id=1000)
+gvfsd-fuse                                               on  /run/user/1000/gvfs                          type  fuse.gvfsd-fuse  (rw,nosuid,nodev,relatime,user_id=1000,group_id=1000)
+nsfs                                                     on  /run/snapd/ns/firefox.mnt                    type  nsfs             (rw)
+nsfs                                                     on  /run/snapd/ns/firmware-updater.mnt           type  nsfs             (rw)
+cat /proc/filesystems
+nodev	sysfs
+nodev	tmpfs
+nodev	bdev
+nodev	proc
+nodev	cgroup
+nodev	cgroup2
+nodev	cpuset
+nodev	devtmpfs
+nodev	configfs
+nodev	debugfs
+nodev	tracefs
+nodev	securityfs
+nodev	sockfs
+nodev	bpf
+nodev	pipefs
+nodev	ramfs
+nodev	hugetlbfs
+nodev	devpts
+	ext3
+	ext2
+	ext4
+	squashfs
+	vfat
+nodev	ecryptfs
+	fuseblk
+nodev	fuse
+nodev	fusectl
+nodev	efivarfs
+nodev	mqueue
+nodev	pstore
+nodev	autofs
+nodev	binfmt_misc
+blkid
+/dev/sda2: UUID="e4b5feaf-b1d4-4f7c-a457-4f1de8ec6c6d" BLOCK_SIZE="4096" TYPE="ext4" PARTUUID="65342e9c-8808-4593-b9e3-5853d4168c72"
+df -h --output=source,fstype,size,used,avail,pcent,target
+Файл.система   Тип   Размер Использовано  Дост Использовано% Cмонтировано в
+tmpfs          tmpfs   795M         1,6M  793M            1% /run
+/dev/sda2      ext4     59G          11G   45G           20% /
+tmpfs          tmpfs   3,9G            0  3,9G            0% /dev/shm
+tmpfs          tmpfs   5,0M         8,0K  5,0M            1% /run/lock
+tmpfs          tmpfs   795M         140K  794M            1% /run/user/1000df -h --output=source,fstype,size,used,avail,pcent,target
+Файл.система   Тип   Размер Использовано  Дост Использовано% Cмонтировано в
+tmpfs          tmpfs   795M         1,6M  793M            1% /run
+/dev/sda2      ext4     59G          11G   45G           20% /
+tmpfs          tmpfs   3,9G            0  3,9G            0% /dev/shm
+tmpfs          tmpfs   5,0M         8,0K  5,0M            1% /run/lock
+tmpfs          tmpfs   795M         140K  794M            1% /run/user/1000
+swapon --show
+NAME      TYPE SIZE USED PRIO
+/swap.img file 3,8G   0B   -2
+systemctl list-units --type=mount
+  UNIT                                                   LOAD   ACTIVE SUB     >
+  -.mount                                                loaded active mounted >
+  dev-hugepages.mount                                    loaded active mounted >
+  dev-mqueue.mount                                       loaded active mounted >
+  proc-sys-fs-binfmt_misc.mount                          loaded active mounted >
+  run-snapd-ns-firefox.mnt.mount                         loaded active mounted >
+  run-snapd-ns-firmware\x2dupdater.mnt.mount             loaded active mounted >
+  run-snapd-ns-snapd\x2ddesktop\x2dintegration.mnt.mount loaded active mounted >
+  run-snapd-ns.mount                                     loaded active mounted >
+  run-user-1000-doc.mount                                loaded active mounted >
+  run-user-1000-gvfs.mount                               loaded active mounted >
+  run-user-1000.mount                                    loaded active mounted >
+  snap-bare-5.mount                                      loaded active mounted >
+  snap-core22-1748.mount                                 loaded active mounted >
+  snap-core22-1963.mount                                 loaded active mounted >
+  snap-firefox-5751.mount                                loaded active mounted >
+  snap-firefox-6103.mount                                loaded active mounted >
+  snap-firmware\x2dupdater-167.mount                     loaded active mounted >
+  snap-gnome\x2d42\x2d2204-202.mount                     loaded active mounted >
+  snap-gtk\x2dcommon\x2dthemes-1535.mount                loaded active mounted >
+  snap-snap\x2dstore-1248.mount                          loaded active mounted >
+  snap-snap\x2dstore-1270.mount                          loaded active mounted >
+  snap-snapd-23545.mount                                 loaded active mounted >
+  snap-snapd-24505.mount                                 loaded active mounted >
+  snap-snapd\x2ddesktop\x2dintegration-253.mount         loaded active mounted >
+  sys-fs-fuse-connections.mount                          loaded active mounted >
+  sys-kernel-config.mount                                loaded active mounted >
+  sys-kernel-debug.mount                                 loaded active mounted >
+  sys-kernel-tracing.mount                               loaded active mounted >
+Legend: LOAD   → Reflects whether the unit definition was properly loaded.
+        ACTIVE → The high-level unit activation state, i.e. generalization of S>
+        SUB    → The low-level unit activation state, values depend on unit typ>
+
+28 loaded units listed. Pass --all to see loaded but inactive units, too.
+To show all installed unit files use 'systemctl list-unit-files'.
+
+-------------------------------------------------------------------------------
+Задание 11.1
+cat /etc/fstab | grep -v '^#' | column -t
+/dev/disk/by-uuid/e4b5feaf-b1d4-4f7c-a457-4f1de8ec6c6d  /     ext4  defaults  0  1
+/swap.img                                               none  swap  sw        0  0
+eugene@eugene-VirtualBox:~$ lsblk -f
+NAME FSTYPE FSVER LABEL UUID                                 FSAVAIL FSUSE% MOUNTPOINTS
+loop0
+                                                                   0   100% /snap/bare/5
+loop1
+                                                                   0   100% /snap/core22/1748
+loop2
+                                                                   0   100% /snap/core22/1963
+loop3
+                                                                   0   100% /snap/firefox/5751
+loop4
+                                                                   0   100% /snap/firefox/6103
+loop5
+                                                                   0   100% /snap/firmware-updater/167
+loop6
+                                                                   0   100% /snap/gnome-42-2204/202
+loop7
+                                                                   0   100% /snap/gtk-common-themes/1535
+loop8
+                                                                   0   100% /snap/snap-store/1248
+loop9
+                                                                   0   100% /snap/snap-store/1270
+loop10
+                                                                   0   100% /snap/snapd/23545
+loop11
+                                                                   0   100% /snap/snapd/24505
+loop12
+                                                                   0   100% /snap/snapd-desktop-integration/253
+sda                                                                         
+├─sda1
+│                                                                           
+└─sda2
+     ext4   1.0         e4b5feaf-b1d4-4f7c-a457-4f1de8ec6c6d   44,9G    18% /
+sr0                                                                         
+eugene@eugene-VirtualBox:~$ findmnt --all --real
+TARGET                                SOURCE      FSTYPE      OPTIONS
+/                                     /dev/sda2   ext4        rw,relatime
+├─/run/user/1000/doc                  portal      fuse.portal rw,nosuid,nodev,re
+├─/snap/bare/5                        /dev/loop0  squashfs    ro,nodev,relatime,
+├─/snap/core22/1748                   /dev/loop1  squashfs    ro,nodev,relatime,
+├─/snap/firefox/5751                  /dev/loop3  squashfs    ro,nodev,relatime,
+├─/snap/core22/1963                   /dev/loop2  squashfs    ro,nodev,relatime,
+├─/snap/firmware-updater/167          /dev/loop5  squashfs    ro,nodev,relatime,
+├─/snap/gnome-42-2204/202             /dev/loop6  squashfs    ro,nodev,relatime,
+├─/snap/snap-store/1248               /dev/loop8  squashfs    ro,nodev,relatime,
+├─/snap/gtk-common-themes/1535        /dev/loop7  squashfs    ro,nodev,relatime,
+├─/snap/snapd-desktop-integration/253 /dev/loop12 squashfs    ro,nodev,relatime,
+├─/snap/snapd/23545                   /dev/loop10 squashfs    ro,nodev,relatime,
+├─/snap/snapd/24505                   /dev/loop11 squashfs    ro,nodev,relatime,
+├─/snap/snap-store/1270               /dev/loop9  squashfs    ro,nodev,relatime,
+└─/snap/firefox/6103                  /dev/loop4  squashfs    ro,nodev,relatime,
+eugene@eugene-VirtualBox:~$ sudo blkid -o list
+device     fs_type label    mount point    UUID
+-------------------------------------------------------------------------------
+/dev/sda2  ext4             /              e4b5feaf-b1d4-4f7c-a457-4f1de8ec6c6d
+/dev/loop1 squashfs         /snap/core22/1748 
+/dev/loop8 squashfs         /snap/snap-store/1248 
+/dev/loop6 squashfs         /snap/gnome-42-2204/202 
+/dev/loop4 squashfs         /snap/firefox/6103 
+/dev/loop11
+           squashfs         /snap/snapd/24505 
+/dev/loop2 squashfs         /snap/core22/1963 
+/dev/loop0 squashfs         /snap/bare/5   
+/dev/loop9 squashfs         /snap/snap-store/1270 
+/dev/loop7 squashfs         /snap/gtk-common-themes/1535 
+/dev/sda1                   (not mounted)  
+/dev/loop5 squashfs         /snap/firmware-updater/167 
+/dev/loop12
+           squashfs         /snap/snapd-desktop-integration/253 
+/dev/loop3 squashfs         /snap/firefox/5751 
+/dev/loop10
+           squashfs         /snap/snapd/23545 
+eugene@eugene-VirtualBox:~$ mount | column -t
+sysfs                                                    on  /sys                                         type  sysfs            (rw,nosuid,nodev,noexec,relatime)
+proc                                                     on  /proc                                        type  proc             (rw,nosuid,nodev,noexec,relatime)
+udev                                                     on  /dev                                         type  devtmpfs         (rw,nosuid,relatime,size=4027888k,nr_inodes=1006972,mode=755,inode64)
+devpts                                                   on  /dev/pts                                     type  devpts           (rw,nosuid,noexec,relatime,gid=5,mode=620,ptmxmode=000)
+tmpfs                                                    on  /run                                         type  tmpfs            (rw,nosuid,nodev,noexec,relatime,size=813116k,mode=755,inode64)
+/dev/sda2                                                on  /                                            type  ext4             (rw,relatime)
+securityfs                                               on  /sys/kernel/security                         type  securityfs       (rw,nosuid,nodev,noexec,relatime)
+tmpfs                                                    on  /dev/shm                                     type  tmpfs            (rw,nosuid,nodev,inode64)
+tmpfs                                                    on  /run/lock                                    type  tmpfs            (rw,nosuid,nodev,noexec,relatime,size=5120k,inode64)
+cgroup2                                                  on  /sys/fs/cgroup                               type  cgroup2          (rw,nosuid,nodev,noexec,relatime,nsdelegate,memory_recursiveprot)
+pstore                                                   on  /sys/fs/pstore                               type  pstore           (rw,nosuid,nodev,noexec,relatime)
+bpf                                                      on  /sys/fs/bpf                                  type  bpf              (rw,nosuid,nodev,noexec,relatime,mode=700)
+systemd-1                                                on  /proc/sys/fs/binfmt_misc                     type  autofs           (rw,relatime,fd=32,pgrp=1,timeout=0,minproto=5,maxproto=5,direct,pipe_ino=4885)
+tracefs                                                  on  /sys/kernel/tracing                          type  tracefs          (rw,nosuid,nodev,noexec,relatime)
+mqueue                                                   on  /dev/mqueue                                  type  mqueue           (rw,nosuid,nodev,noexec,relatime)
+debugfs                                                  on  /sys/kernel/debug                            type  debugfs          (rw,nosuid,nodev,noexec,relatime)
+hugetlbfs                                                on  /dev/hugepages                               type  hugetlbfs        (rw,nosuid,nodev,relatime,pagesize=2M)
+fusectl                                                  on  /sys/fs/fuse/connections                     type  fusectl          (rw,nosuid,nodev,noexec,relatime)
+configfs                                                 on  /sys/kernel/config                           type  configfs         (rw,nosuid,nodev,noexec,relatime)
+/var/lib/snapd/snaps/bare_5.snap                         on  /snap/bare/5                                 type  squashfs         (ro,nodev,relatime,errors=continue,threads=single,x-gdu.hide,x-gvfs-hide)
+/var/lib/snapd/snaps/core22_1748.snap                    on  /snap/core22/1748                            type  squashfs         (ro,nodev,relatime,errors=continue,threads=single,x-gdu.hide,x-gvfs-hide)
+/var/lib/snapd/snaps/firefox_5751.snap                   on  /snap/firefox/5751                           type  squashfs         (ro,nodev,relatime,errors=continue,threads=single,x-gdu.hide,x-gvfs-hide)
+/var/lib/snapd/snaps/core22_1963.snap                    on  /snap/core22/1963                            type  squashfs         (ro,nodev,relatime,errors=continue,threads=single,x-gdu.hide,x-gvfs-hide)
+/var/lib/snapd/snaps/firmware-updater_167.snap           on  /snap/firmware-updater/167                   type  squashfs         (ro,nodev,relatime,errors=continue,threads=single,x-gdu.hide,x-gvfs-hide)
+/var/lib/snapd/snaps/gnome-42-2204_202.snap              on  /snap/gnome-42-2204/202                      type  squashfs         (ro,nodev,relatime,errors=continue,threads=single,x-gdu.hide,x-gvfs-hide)
+/var/lib/snapd/snaps/snap-store_1248.snap                on  /snap/snap-store/1248                        type  squashfs         (ro,nodev,relatime,errors=continue,threads=single,x-gdu.hide,x-gvfs-hide)
+/var/lib/snapd/snaps/gtk-common-themes_1535.snap         on  /snap/gtk-common-themes/1535                 type  squashfs         (ro,nodev,relatime,errors=continue,threads=single,x-gdu.hide,x-gvfs-hide)
+/var/lib/snapd/snaps/snapd-desktop-integration_253.snap  on  /snap/snapd-desktop-integration/253          type  squashfs         (ro,nodev,relatime,errors=continue,threads=single,x-gdu.hide,x-gvfs-hide)
+/var/lib/snapd/snaps/snapd_23545.snap                    on  /snap/snapd/23545                            type  squashfs         (ro,nodev,relatime,errors=continue,threads=single,x-gdu.hide,x-gvfs-hide)
+/var/lib/snapd/snaps/snapd_24505.snap                    on  /snap/snapd/24505                            type  squashfs         (ro,nodev,relatime,errors=continue,threads=single,x-gdu.hide,x-gvfs-hide)
+/var/lib/snapd/snaps/snap-store_1270.snap                on  /snap/snap-store/1270                        type  squashfs         (ro,nodev,relatime,errors=continue,threads=single,x-gdu.hide,x-gvfs-hide)
+/var/lib/snapd/snaps/firefox_6103.snap                   on  /snap/firefox/6103                           type  squashfs         (ro,nodev,relatime,errors=continue,threads=single,x-gdu.hide,x-gvfs-hide)
+binfmt_misc                                              on  /proc/sys/fs/binfmt_misc                     type  binfmt_misc      (rw,nosuid,nodev,noexec,relatime)
+tmpfs                                                    on  /run/snapd/ns                                type  tmpfs            (rw,nosuid,nodev,noexec,relatime,size=813116k,mode=755,inode64)
+nsfs                                                     on  /run/snapd/ns/snapd-desktop-integration.mnt  type  nsfs             (rw)
+tmpfs                                                    on  /run/user/1000                               type  tmpfs            (rw,nosuid,nodev,relatime,size=813112k,nr_inodes=203278,mode=700,uid=1000,gid=1000,inode64)
+portal                                                   on  /run/user/1000/doc                           type  fuse.portal      (rw,nosuid,nodev,relatime,user_id=1000,group_id=1000)
+gvfsd-fuse                                               on  /run/user/1000/gvfs                          type  fuse.gvfsd-fuse  (rw,nosuid,nodev,relatime,user_id=1000,group_id=1000)
+nsfs                                                     on  /run/snapd/ns/firefox.mnt                    type  nsfs             (rw)
+nsfs                                                     on  /run/snapd/ns/firmware-updater.mnt           type  nsfs             (rw)
+eugene@eugene-VirtualBox:~$ df -hT | head -3 && echo "---" && findmnt | head -3
+Файл.система   Тип   Размер Использовано  Дост Использовано% Cмонтировано в
+tmpfs          tmpfs   795M         1,6M  793M            1% /run
+/dev/sda2      ext4     59G          11G   45G           20% /
+---
+TARGET                                            SOURCE                 FSTYPE          OPTIONS
+/                                                 /dev/sda2              ext4            rw,relatime
+├─/sys                                            sysfs                  sysfs           rw,nosuid,nodev,noexec,relatime
+eugene@eugene-VirtualBox:~$ swapon --show --bytes --noheadings
+/swap.img file 4106219520    0   -2
+eugene@eugene-VirtualBox:~$ systemctl list-units --type=mount --all --no-legend
+  -.mount                                                                    lo>
+  dev-hugepages.mount                                                        lo>
+  dev-mqueue.mount                                                           lo>
+● home.mount                                                                 no>
+  proc-sys-fs-binfmt_misc.mount                                              lo>
+● run-credentials-systemd\x2dresolved.service.mount                          no>
+● run-credentials-systemd\x2dsysctl.service.mount                            no>
+● run-credentials-systemd\x2dsysusers.service.mount                          no>
+● run-credentials-systemd\x2dtmpfiles\x2dclean.service.mount                 no>
+● run-credentials-systemd\x2dtmpfiles\x2dsetup.service.mount                 no>
+● run-credentials-systemd\x2dtmpfiles\x2dsetup\x2ddev.service.mount          no>
+● run-credentials-systemd\x2dtmpfiles\x2dsetup\x2ddev\x2dearly.service.mount no>
+  run-snapd-ns-firefox.mnt.mount                                             lo>
+  run-snapd-ns-firmware\x2dupdater.mnt.mount                                 lo>
+  run-snapd-ns-snapd\x2ddesktop\x2dintegration.mnt.mount                     lo>
+  run-snapd-ns.mount                                                         lo>
+  run-user-1000-doc.mount                                                    lo>
+  run-user-1000-gvfs.mount                                                   lo>
+  run-user-1000.mount                                                        lo>
+  snap-bare-5.mount                                                          lo>
+  snap-core22-1748.mount                                                     lo>
+  snap-core22-1963.mount                                                     lo>
+  snap-firefox-5751.mount                                                    lo>
+  snap-firefox-6103.mount                                                    lo>
+  snap-firmware\x2dupdater-167.mount                                         lo>
+  snap-gnome\x2d42\x2d2204-202.mount                                         lo>
+  snap-gtk\x2dcommon\x2dthemes-1535.mount                                    lo>
+  snap-snap\x2dstore-1248.mount                                              lo>
+  snap-snap\x2dstore-1270.mount                                              lo>
+  snap-snapd-23545.mount                                                     lo>
+  snap-snapd-24505.mount                                                     lo>
+  snap-snapd\x2ddesktop\x2dintegration-253.mount                             lo>
+  sys-fs-fuse-connections.mount                                              lo>
+  sys-kernel-config.mount                                                    lo>
+  sys-kernel-debug.mount                                                     lo>
+  sys-kernel-tracing.mount                                                   lo>
+● tmp.mount         
+---------------------------------------------------------------
+Задание 11.2
+sudo lsblk -o NAME,FSTYPE,MOUNTPOINT,SIZE,LABEL,UUID,RO,RM,MAJ:MIN --tree
+NAME FSTYPE MOUNTPOINT   SIZE LABEL UUID                                 RO RM MAJ:MIN
+loop0
+            /snap/core  73,9M                                             1  0   7:0  
+loop1
+            /snap/bare     4K                                             1  0   7:1  
+loop2
+            /snap/core  73,9M                                             1  0   7:2  
+loop3
+            /snap/fire   258M                                             1  0   7:3  
+loop4
+            /snap/fire 241,5M                                             1  0   7:4  
+loop5
+            /snap/firm  11,1M                                             1  0   7:5  
+loop6
+            /snap/gnom   516M                                             1  0   7:6  
+loop7
+            /snap/gtk-  91,7M                                             1  0   7:7  
+loop8
+            /snap/snap  10,8M                                             1  0   7:8  
+loop9
+            /snap/snap  10,8M                                             1  0   7:9  
+loop10
+            /snap/snap  44,4M                                             1  0   7:10 
+loop11
+            /snap/snap  50,9M                                             1  0   7:11 
+loop12
+            /snap/snap   568K                                             1  0   7:12 
+sda                       60G                                             0  0   8:0  
+├─sda1
+│                          1M                                             0  0   8:1  
+└─sda2
+     ext4   /             60G       e4b5feaf-b1d4-4f7c-a457-4f1de8ec6c6d  0  0   8:2  
+sr0                     1024M                                             0  1  11:0  
+
+{
+  echo -e "DEVICE\tTYPE\tMOUNT_POINT\tOPTIONS"
+  findmnt -rn -o SOURCE,FSTYPE,TARGET,OPTIONS | awk 'BEGIN{OFS="\t"} {print $1,$2,$3,$4}'
+}
+DEVICE	TYPE	MOUNT_POINT	OPTIONS
+sysfs	sysfs	/sys	rw,nosuid,nodev,noexec,relatime
+proc	proc	/proc	rw,nosuid,nodev,noexec,relatime
+udev	devtmpfs	/dev	rw,nosuid,relatime,size=4027888k,nr_inodes=1006972,mode=755,inode64
+devpts	devpts	/dev/pts	rw,nosuid,noexec,relatime,gid=5,mode=620,ptmxmode=000
+tmpfs	tmpfs	/run	rw,nosuid,nodev,noexec,relatime,size=813116k,mode=755,inode64
+/dev/sda2	ext4	/	rw,relatime
+securityfs	securityfs	/sys/kernel/security	rw,nosuid,nodev,noexec,relatime
+tmpfs	tmpfs	/dev/shm	rw,nosuid,nodev,inode64
+tmpfs	tmpfs	/run/lock	rw,nosuid,nodev,noexec,relatime,size=5120k,inode64
+cgroup2	cgroup2	/sys/fs/cgroup	rw,nosuid,nodev,noexec,relatime,nsdelegate,memory_recursiveprot
+pstore	pstore	/sys/fs/pstore	rw,nosuid,nodev,noexec,relatime
+bpf	bpf	/sys/fs/bpf	rw,nosuid,nodev,noexec,relatime,mode=700
+systemd-1	autofs	/proc/sys/fs/binfmt_misc	rw,relatime,fd=32,pgrp=1,timeout=0,minproto=5,maxproto=5,direct,pipe_ino=2747
+mqueue	mqueue	/dev/mqueue	rw,nosuid,nodev,noexec,relatime
+tracefs	tracefs	/sys/kernel/tracing	rw,nosuid,nodev,noexec,relatime
+debugfs	debugfs	/sys/kernel/debug	rw,nosuid,nodev,noexec,relatime
+fusectl	fusectl	/sys/fs/fuse/connections	rw,nosuid,nodev,noexec,relatime
+configfs	configfs	/sys/kernel/config	rw,nosuid,nodev,noexec,relatime
+hugetlbfs	hugetlbfs	/dev/hugepages	rw,nosuid,nodev,relatime,pagesize=2M
+/dev/loop1	squashfs	/snap/bare/5	ro,nodev,relatime,errors=continue,threads=single
+/dev/loop0	squashfs	/snap/core22/1963	ro,nodev,relatime,errors=continue,threads=single
+/dev/loop3	squashfs	/snap/firefox/5751	ro,nodev,relatime,errors=continue,threads=single
+/dev/loop2	squashfs	/snap/core22/1748	ro,nodev,relatime,errors=continue,threads=single
+/dev/loop5	squashfs	/snap/firmware-updater/167	ro,nodev,relatime,errors=continue,threads=single
+/dev/loop11	squashfs	/snap/snapd/24505	ro,nodev,relatime,errors=continue,threads=single
+/dev/loop6	squashfs	/snap/gnome-42-2204/202	ro,nodev,relatime,errors=continue,threads=single
+/dev/loop12	squashfs	/snap/snapd-desktop-integration/253	ro,nodev,relatime,errors=continue,threads=single
+/dev/loop8	squashfs	/snap/snap-store/1248	ro,nodev,relatime,errors=continue,threads=single
+/dev/loop7	squashfs	/snap/gtk-common-themes/1535	ro,nodev,relatime,errors=continue,threads=single
+/dev/loop10	squashfs	/snap/snapd/23545	ro,nodev,relatime,errors=continue,threads=single
+/dev/loop4	squashfs	/snap/firefox/6103	ro,nodev,relatime,errors=continue,threads=single
+/dev/loop9	squashfs	/snap/snap-store/1270	ro,nodev,relatime,errors=continue,threads=single
+binfmt_misc	binfmt_misc	/proc/sys/fs/binfmt_misc	rw,nosuid,nodev,noexec,relatime
+tmpfs[/snapd/ns]	tmpfs	/run/snapd/ns	rw,nosuid,nodev,noexec,relatime,size=813116k,mode=755,inode64
+nsfs[mnt:[4026532433]]	nsfs	/run/snapd/ns/snapd-desktop-integration.mnt	rw
+tmpfs	tmpfs	/run/user/1000	rw,nosuid,nodev,relatime,size=813112k,nr_inodes=203278,mode=700,uid=1000,gid=1000,inode64
+portal	fuse.portal	/run/user/1000/doc	rw,nosuid,nodev,relatime,user_id=1000,group_id=1000
+gvfsd-fuse	fuse.gvfsd-fuse	/run/user/1000/gvfs	rw,nosuid,nodev,relatime,user_id=1000,group_id=1000
+nsfs[mnt:[4026532254]]	nsfs	/run/snapd/ns/firefox.mnt	rw
+
+---------------------------------------------------------------
+Задание 11.3
+sudo findmnt --real --tree --output TARGET,FSROOT,FSTYPE,OPTIONS -D 50
+cat /proc/sys/fs/mount-max 
+100000
+grep "max links" /usr/include/linux/limits.h
+getconf PATH_MAX /
+4096
+sudo find / -xdev -type d -printf '%d\t%p\n' | sort -n | tail -5
+14	/home/eugene/snap/firefox/common/.mozilla/firefox/lvpyax1q.default/storage/default/https+++web.telegram.org/cache/morgue/96
+14	/home/eugene/snap/firefox/common/.mozilla/firefox/lvpyax1q.default/storage/default/https+++web.telegram.org/cache/morgue/97
+14	/home/eugene/snap/firefox/common/.mozilla/firefox/lvpyax1q.default/storage/default/https+++web.telegram.org/cache/morgue/98
+14	/home/eugene/snap/firefox/common/.mozilla/firefox/lvpyax1q.default/storage/default/https+++web.telegram.org/idb/295338591tatt-ad.files/journals
+14	/home/eugene/snap/firefox/common/.mozilla/firefox/lvpyax1q.default/storage/permanent/chrome/idb/3870112724rsegmnoittet-es.files/journals
+for mp in $(findmnt -rn -o TARGET); do 
+  echo -n "$mp: "; 
+  stat -f -c "%l" "$mp" 2>/dev/null || echo "N/A"; 
+done | column -t
+/sys:                                         255
+/proc:                                        255
+/dev:                                         255
+/dev/pts:                                     255
+/run:                                         255
+/:                                            255
+/sys/kernel/security:                         255
+/dev/shm:                                     255
+/run/lock:                                    255
+/sys/fs/cgroup:                               255
+/sys/fs/pstore:                               255
+/sys/fs/bpf:                                  255
+/proc/sys/fs/binfmt_misc:                     255
+/dev/mqueue:                                  255
+/sys/kernel/tracing:                          255
+/sys/kernel/debug:                            255
+/sys/fs/fuse/connections:                     255
+/sys/kernel/config:                           255
+/dev/hugepages:                               255
+/snap/bare/5:                                 256
+/snap/core22/1963:                            256
+/snap/firefox/5751:                           256
+/snap/core22/1748:                            256
+/snap/firmware-updater/167:                   256
+/snap/snapd/24505:                            256
+/snap/gnome-42-2204/202:                      256
+/snap/snapd-desktop-integration/253:          256
+/snap/snap-store/1248:                        256
+/snap/gtk-common-themes/1535:                 256
+/snap/snapd/23545:                            256
+/snap/firefox/6103:                           256
+/snap/snap-store/1270:                        256
+/proc/sys/fs/binfmt_misc:                     255
+/run/snapd/ns:                                255
+/run/snapd/ns/snapd-desktop-integration.mnt:  255
+/run/user/1000:                               255
+/run/user/1000/doc:                           N/A
+/run/user/1000/gvfs:                          1024
+/run/snapd/ns/firefox.mnt:                    255
+---------------------------------------------------------------------------------------------------
+Задание 12
+file /bin/ls
+/bin/ls: ELF 64-bit LSB pie executable, x86-64, version 1 (SYSV), dynamically linked, interpreter /lib64/ld-linux-x86-64.so.2, BuildID[sha1]=3eca7e3905b37d48cf0a88b576faa7b95cc3097b, for GNU/Linux 3.2.0, stripped
+ile -v /bin/ls
+file-5.45
+magic file from /etc/magic:/usr/share/misc/magic
+file --version
+file-5.45
+magic file from /etc/magic:/usr/share/misc/magic
+ls -l /usr/share/misc/magic*
+lrwxrwxrwx 1 root root 13 мар 31  2024 /usr/share/misc/magic -> ../file/magic
+lrwxrwxrwx 1 root root 24 мар 31  2024 /usr/share/misc/magic.mgc -> ../../lib/file/magic.mgc
+file -k /etc/passwd
+/etc/passwd: ASCII text
+hexdump -C -n 256 /bin/ls | head
+00000000  7f 45 4c 46 02 01 01 00  00 00 00 00 00 00 00 00  |.ELF............|
+00000010  03 00 3e 00 01 00 00 00  30 6d 00 00 00 00 00 00  |..>.....0m......|
+00000020  40 00 00 00 00 00 00 00  28 24 02 00 00 00 00 00  |@.......($......|
+00000030  00 00 00 00 40 00 38 00  0d 00 40 00 1f 00 1e 00  |....@.8...@.....|
+00000040  06 00 00 00 04 00 00 00  40 00 00 00 00 00 00 00  |........@.......|
+00000050  40 00 00 00 00 00 00 00  40 00 00 00 00 00 00 00  |@.......@.......|
+00000060  d8 02 00 00 00 00 00 00  d8 02 00 00 00 00 00 00  |................|
+00000070  08 00 00 00 00 00 00 00  03 00 00 00 04 00 00 00  |................|
+00000080  18 03 00 00 00 00 00 00  18 03 00 00 00 00 00 00  |................|
+00000090  18 03 00 00 00 00 00 00  1c 00 00 00 00 00 00 00  |................|
+--------------------------------------------------------------------------------
+Задание 12.1
+grep -hE '^#|magic' /usr/share/file/magic/* 2>/dev/null | head -n 5
+echo -ne "\x7fELF" > elf_test && file elf_test
+elf_test: ELF
+echo -ne '\x89PNG\r\n\x1a\n' > png_test && file png_test
+png_test: data
+grep -A3 -E 'ELF|PNG|JPEG' /usr/share/file/magic/Magic 2>/dev/null | head -12
+hexdump -C -n 64 /bin/ls
+00000000  7f 45 4c 46 02 01 01 00  00 00 00 00 00 00 00 00  |.ELF............|
+00000010  03 00 3e 00 01 00 00 00  30 6d 00 00 00 00 00 00  |..>.....0m......|
+00000020  40 00 00 00 00 00 00 00  28 24 02 00 00 00 00 00  |@.......($......|
+00000030  00 00 00 00 40 00 38 00  0d 00 40 00 1f 00 1e 00  |....@.8...@.....|
+00000040
+
+--------------------------------------------------------------------------------
+Задание 12.2
+file /bin/ls
+/bin/ls: ELF 64-bit LSB pie executable, x86-64, version 1 (SYSV), dynamically linked, interpreter /lib64/ld-linux-x86-64.so.2, BuildID[sha1]=3eca7e3905b37d48cf0a88b576faa7b95cc3097b, for GNU/Linux 3.2.0, stripped
+file -v /etc/passwd
+file-5.45
+magic file from /etc/magic:/usr/share/misc/magic
+file -r /usr/bin/* | head -5
+/usr/bin/[:                                  ELF 64-bit LSB pie executable, x86-64, version 1 (SYSV), dynamically linked, interpreter /lib64/ld-linux-x86-64.so.2, BuildID[sha1]=896ee7fd69725669827c27747dcab594f33b4b9d, for GNU/Linux 3.2.0, stripped
+/usr/bin/aa-enabled:                         ELF 64-bit LSB pie executable, x86-64, version 1 (SYSV), dynamically linked, interpreter /lib64/ld-linux-x86-64.so.2, BuildID[sha1]=893247eff80acc69c9c2aa64a72012dd093e7c05, for GNU/Linux 3.2.0, stripped
+/usr/bin/aa-exec:                            ELF 64-bit LSB pie executable, x86-64, version 1 (SYSV), dynamically linked, interpreter /lib64/ld-linux-x86-64.so.2, BuildID[sha1]=df8caf769b9d79c5c79ec5bb8e067dae9aea80d8, for GNU/Linux 3.2.0, stripped
+/usr/bin/aa-features-abi:                    ELF 64-bit LSB pie executable, x86-64, version 1 (SYSV), dynamically linked, interpreter /lib64/ld-linux-x86-64.so.2, BuildID[sha1]=f781dcba78e3404682002cefe64b3aac7648cf35, for GNU/Linux 3.2.0, stripped
+/usr/bin/aconnect:                           ELF 64-bit LSB pie executable, x86-64, version 1 (SYSV), dynamically linked, interpreter /lib64/ld-linux-x86-64.so.2, BuildID[sha1]=c25b8b06e3710a61cca75f18e2c339d908c2c617, for GNU/Linux 3.2.0, stripped
+file -L /usr/bin/python3
+/usr/bin/python3: ELF 64-bit LSB executable, x86-64, version 1 (SYSV), dynamically linked, interpreter /lib64/ld-linux-x86-64.so.2, BuildID[sha1]=37451b37c71cb46f8ccb27cb3cdbb7aa004b9987, for GNU/Linux 3.2.0, stripped
+file -i /var/log/syslog
+/var/log/syslog: text/plain; charset=utf-8
+file -k /etc/group
+/etc/group: ASCII text
+ls /bin/* | head -3 | file -f -
+/bin/[:          ELF 64-bit LSB pie executable, x86-64, version 1 (SYSV), dynamically linked, interpreter /lib64/ld-linux-x86-64.so.2, BuildID[sha1]=896ee7fd69725669827c27747dcab594f33b4b9d, for GNU/Linux 3.2.0, stripped
+/bin/aa-enabled: ELF 64-bit LSB pie executable, x86-64, version 1 (SYSV), dynamically linked, interpreter /lib64/ld-linux-x86-64.so.2, BuildID[sha1]=893247eff80acc69c9c2aa64a72012dd093e7c05, for GNU/Linux 3.2.0, stripped
+/bin/aa-exec:    ELF 64-bit LSB pie executable, x86-64, version 1 (SYSV), dynamically linked, interpreter /lib64/ld-linux-x86-64.so.2, BuildID[sha1]=df8caf769b9d79c5c79ec5bb8e067dae9aea80d8, for GNU/Linux 3.2.0, stripped
+file -F " | " /etc/*.conf | head -3
+/etc/adduser.conf |          ASCII text
+/etc/apg.conf |              ASCII text
+/etc/brltty.conf |           Unicode text, UTF-8 text, with very long lines (674)
+file -b /dev/sda
+block special (8/0)
+file -s /dev/sda1
+/dev/sda1: no read permission
+--------------------------------------------------------------------------------
+Задание 12.3
+sudo mkdir -p /usr/share/file/magic/custom
+echo "0 string MYFILE MyCustomFile format" | sudo tee /usr/share/file/magic/custom/mytype
+0 string MYFILE MyCustomFile format
+cd /usr/share/file/magic/custom
+sudo file -C -m mytype
+sudo file -C -m mytype
+ls -la /usr/share/file/magic/custom/
+итого 16
+drwxr-xr-x 2 root root 4096 мая 11 02:06 .
+drwxr-xr-x 3 root root 4096 мая 11 02:05 ..
+-rw-r--r-- 1 root root   36 мая 11 02:06 mytype
+-rw-r--r-- 1 root root  752 мая 11 02:07 mytype.mgc
+echo -ne '\x4D\x59\x46\x49\x4C\x45\x1A\xFF\x00BinaryData' > ~/custom.mytype
+file -m /usr/share/file/magic/custom/mytype.mgc ~/custom.mytype
+/home/eugene/custom.mytype: MyCustomFile format
+
